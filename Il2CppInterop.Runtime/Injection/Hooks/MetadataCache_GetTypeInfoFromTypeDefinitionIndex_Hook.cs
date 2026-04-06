@@ -18,7 +18,7 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         internal delegate Il2CppClass* MethodDelegate(int index);
 
-        private Il2CppClass* Hook(int index)
+        private unsafe Il2CppClass* Hook(int index)
         {
             if (InjectorHelpers.s_InjectedClasses.TryGetValue(index, out IntPtr classPtr))
                 return (Il2CppClass*)classPtr;
@@ -100,12 +100,22 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
                     }
                     else
                     {
-                        // Two calls, second one (GetIndexForTypeDefinitionInternal) is inlined
+                        // Two calls, second one GetIndexForTypeDefinitionInternal is inlined
                         getTypeInfoFromTypeDefinitionIndex = getTypeInfoFromHandleXrefs.Single();
-                        // Xref scanner is sometimes confused about getTypeInfoFromHandle so we walk all the thunks until we hit the big method we need
-                        while (XrefScannerLowLevel.JumpTargets(getTypeInfoFromTypeDefinitionIndex).ToArray().Length == 1)
+
+                        // Xref scanner is sometimes confused about GetTypeInfoFromHandle
+                        var getTypeInfoFromTypeDefinitionXrefs =
+                            XrefScannerLowLevel.JumpTargets(getTypeInfoFromTypeDefinitionIndex).ToArray();
+                        if (getTypeInfoFromTypeDefinitionXrefs.Length > 1)
                         {
-                            getTypeInfoFromTypeDefinitionIndex = XrefScannerLowLevel.JumpTargets(getTypeInfoFromTypeDefinitionIndex).Single();
+                            // In some cases neither function is inlined, second call is GetTypeInfoFromTypeDefinitionIndex
+                            getTypeInfoFromTypeDefinitionIndex = getTypeInfoFromTypeDefinitionXrefs.Last();
+                        }
+                        else
+                        {
+                            // We walk all the thunks until we hit the big method we need
+                            while (XrefScannerLowLevel.JumpTargets(getTypeInfoFromTypeDefinitionIndex).ToArray().Length == 1)
+                                getTypeInfoFromTypeDefinitionIndex = XrefScannerLowLevel.JumpTargets(getTypeInfoFromTypeDefinitionIndex).Single();
                         }
                     }
                 }
